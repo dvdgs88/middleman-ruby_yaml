@@ -1,31 +1,62 @@
 # Require core library
 require 'middleman-core'
-require 'shenanigans/Hash'
+require 'ostruct'
 
 # Extension namespace
 class RubyYaml < ::Middleman::Extension
-  option :path, 'data/', 'Path with yaml\'s'
 
   def initialize(app, options_hash={}, &block)
-    # Call super to build options from the options_hash
     super
-    @@options = options
-    @@datasource = {}
   end
 
   def after_initialize
   end
 
   helpers do
-    def datasource
-      return @@datasource if @@datasource.present?
-      Hash[(d = Dir["#{@@options.path}/*.yml"]).map { |f| File.basename(f,".yml") }.zip(d)].each do |f|
-        @@datasource[f[0]] = YAML.load(ERB.new(File.read(f[1])).result)
+    def o(hash, repeat)
+      res = []
+      hash = hash.first if hash.is_a?(Array)
+      repeat.times do |t|
+        res <<  RubyYamlObject.new(hash)
       end
-      @@datasource = @@datasource.to_ostruct
+      res
+    end
+  end
+end
+
+class RubyYamlObject < OpenStruct
+  def initialize(hash=nil)
+    @table = {}
+    @hash_table = {}
+
+    if hash
+      hash.each do |k,v|
+        @table[k.to_sym] = conversor(v)
+        @hash_table[k.to_sym] = v
+
+        new_ostruct_member(k)
+      end
     end
   end
 
+  private
+
+  def conversor(v)
+    return self.class.new(v) if v.is_a?(Hash)
+    return array_r(v) if v.is_a?(Array)
+    return string_r(v) if v.is_a?(String)
+  end
+
+  def string_r(val)
+    return val unless val[0..2] == '<%='
+    ERB.new(val).result
+  end
+
+  def array_r(array)
+    array.map do |i|
+      i = conversor(i)
+    end
+  end
 end
 
 RubyYaml.register(:ruby_yaml)
